@@ -1,55 +1,66 @@
 import gradio as gr
-from .rag_pipeline import ChatAssistant, get_embeddings, vretrieve, rerank
+
+from .rag_pipeline import ChatAssistant, get_embeddings, vretrieve, retrieve_chatbot_prompt, request_retrieve_prompt
 from .utils import load_local
-from .rag_pipeline import retrieve_chatbot_prompt, request_retrieve_prompt
 
+CHAT_MODEL_ID = "mistral-medium"
+CHAT_MODEL_PROVIDER = "mistral"
+EMBEDDING_MODEL_ID = "alibaba-nlp/gte-multilingual-base"
+VECTORSTORE_PATH = "notebook/An/master/knowledge/vectorstore_full"
+LOG_FILE_PATH = "log.txt"
+MAX_HISTORY_CONVERSATION = 50
 
-cb = ChatAssistant("mistral-large-2", "mistral")
 sys = """
-You are talking to a customer.
-I will give you the conversation you have had with the customer so far.
-You will respond to the customer's latest message.
+You are an Medical Assistant specialized in providing information and answering questions related to healthcare and medicine.
+You must answer professionally and empathetically, taking into account the user's feelings and concerns.
 """
 
-embed_model = get_embeddings("alibaba-nlp/gte-multilingual-base", show_progress=False)
-vectorestore, docs = load_local("notebook/An/master/knowledge/vectorstore_full", embed_model)      
+print("Initializing models and data...")
+chat_assistant = ChatAssistant(CHAT_MODEL_ID, CHAT_MODEL_PROVIDER)
+embedding_model = get_embeddings(EMBEDDING_MODEL_ID, show_progress=False)
+vectorstore, docs = load_local(VECTORSTORE_PATH, embedding_model)
+print("Initialization complete.")
 
-def chatbot(input_text, history:str, role: str = "customer"):
+def log(log_txt:str):
+    with open(LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
+        log_file.write(log_txt + "\n")
 
+def process_query(query: str) -> str:
+    rag_query = chat_assistant.get_response(request_retrieve_prompt.format(role="user", conversation=query))
+    rag_query = rag_query[rag_query.lower().rfind("["): rag_query.rfind("]")+1]
 
-    conversation_history = "\n".join([f"User: {user_msg}\nBot: {bot_msg}" for user_msg, bot_msg in history])
-    conversation_history += f"\nUser: {input_text}\nBot:"
-
-    rag_query = cb.get_response(request_retrieve_prompt.format(conversation=conversation_history, role=role), sys)
-    retrieve_results = []
     if "NO" not in rag_query:
-        retrieve_results = vretrieve(rag_query, vectorestore, docs, 5, "cosine", 0.5)
-        retrieve_results = rerank(retrieve_results)
+        retrieve_results = vretrieve(rag_query, vectorstore, docs, k=4, metric="mmr", threshold=0.7)
+    else:
+        retrieve_results = []
 
-    rag_context = retrieve_chatbot_prompt.format(retrieved_chunk=retrieve_results, conversation=conversation_history, role=role)
-    response = cb.get_response(conversation_history, sys)
-    history.append((input_text, response))
+    retrieved_docs = "\n".join([f"Document {i+1}:\n" + doc.page_content for i, doc in enumerate(retrieve_results)])
+    log(f"Retrieved documents:\n{retrieved_docs}")
+    log(f"RAG query: {rag_query}")
+    return retrieve_chatbot_prompt.format(role="user", documents=retrieved_docs, conversation=query)
 
-    with open("log.txt", "a", encoding="utf-8") as f:
-        f.write(f"User: {input_text}\nBot: {response}\n")
-        f.write(f"RAG Query: {rag_query}\n")
-        f.write(f"RAG Context: {rag_context}\n")
-        f.write(f"Response: {response}\n\n\n")
+def process(message: str, history: list[list[str]]) -> str:
+    log(f"User message: {message}")
+    history = history[-MAX_HISTORY_CONVERSATION:]
+    conversation = "".join(f"User: {history[i][0]}\nBot: {history[i][1]}\n" for i in range(len(history)))
+    query = conversation + f"User: {message}\nBot:"
+    query = process_query(query)
+    return chat_assistant.get_response(query, sys)
 
-    return history, history
+# --- Chatbot Logic ---
+def chatbot_logic(message: str, history: list) -> any:
+    response = process(message, history)
+    log(f"Bot response: {response}")
+    log("="*50 + "\n\n")
+    yield response
 
-with gr.Blocks() as demo:
-    gr.Markdown("<h1 style='text-align: center;'>ChatGPT</h1>")
-    gr.Markdown("<p style='text-align: center;'>A simple chatbot</p>")
+# Create the Gradio interface
+chatbot_ui = gr.ChatInterface(
+    fn=chatbot_logic,
+    title="MedLLM",
+    theme="soft",
+)
 
-    chatbot_interface = gr.Chatbot()
-    input_text = gr.Textbox(label="Your Message", placeholder="Type your message here...")
-
-    def submit(input_text, history):
-        return chatbot(input_text, history)
-
-    input_text.submit(submit, [input_text, chatbot_interface], [chatbot_interface, chatbot_interface])
-
-    gr.Markdown("<p style='text-align: center;'>Powered by Gradio</p>")
-
-demo.launch(share=True)
+# Launch the app
+if __name__ == "__main__":
+    chatbot_ui.launch(debug=True, share=True)
