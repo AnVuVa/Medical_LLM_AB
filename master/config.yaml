@@ -1,0 +1,25 @@
+version: 0.1
+
+model:
+  name: "llama2:7b"
+  temperature: 0.3
+  max_tokens: 100000
+  provider: "ollama"
+  base_url: "http://localhost:11434/v1"
+
+rag_config:
+  k: 4
+  rerank: 
+    name: "bge-reranker-large"
+    model: "BAAI/bge-reranker-large"
+    top_n: 100
+  embed_model:
+    name: "gte-multilingual-base"
+    model: "alibaba-nlp/gte-multilingual-base"
+  chunk_size: 2048
+  chunk_overlap: 512
+  similarity_threshold: 0.7
+  similarity_metric: "cosine"
+
+knowledge:
+  vectorstore: "faiss"
