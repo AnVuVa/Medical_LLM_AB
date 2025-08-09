@@ -1,6 +1,0 @@
-sentence-transformers
-langchain
-langchain-community
-langchain-huggingface
-torch
-faiss-cpu

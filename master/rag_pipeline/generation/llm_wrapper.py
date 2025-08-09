@@ -38,3 +38,22 @@ class ChatAssistant:
                 ]
             )
         return response.choices[0].message.content
+    
+    @backoff.on_exception(backoff.expo, Exception)
+    def get_streaming_response(self, user: str, sys: str = ""):
+        """Yields the response token by token (streaming)."""
+        response_stream = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": sys},
+                {"role": "user", "content": user},
+            ],
+            stream=True
+        )
+        
+        # Iterate over the stream of chunks
+        for chunk in response_stream:
+            # The actual token is in chunk.choices[0].delta.content
+            token = chunk.choices[0].delta.content
+            if token is not None:
+                yield token

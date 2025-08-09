@@ -18,10 +18,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--query", type=str, required=False, default="Heart definition and heart disease")
+    parser.add_argument("--query", type=str, required=False, default="What are the applications of beta blockers in the treatment of hypertension?")
 
     # Vectorstore params
-    parser.add_argument("--vectorstore_dir", type=str, required=False, default="notebook/An/master/knowledge/vectorstore_1")
+    parser.add_argument("--vectorstore_dir", type=str, required=False, default="notebook/An/master/knowledge/vectorstore_full")
  
     # Model params
     parser.add_argument("--embed_model_name", type=str, default="alibaba-nlp/gte-multilingual-base")
